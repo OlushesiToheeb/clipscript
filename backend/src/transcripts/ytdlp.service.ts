@@ -4,6 +4,7 @@ import { existsSync } from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
 import { Platform } from '../types';
+import { elapsedSeconds } from './time.utils';
 
 const execFileAsync = promisify(execFile);
 const ROOT_YTDLP = path.resolve(__dirname, '..', '..', '..', 'bin', 'yt-dlp');
@@ -31,14 +32,19 @@ export class YtdlpService {
   private async run(args: string[], platform: Platform): Promise<string> {
     // YouTube extraction needs a JS runtime for player challenges; Node is on this machine.
     const fullArgs = [...args, '--js-runtimes', 'node', ...this.cookieArgs(platform)];
+    this.logger.log(`exec: yt-dlp ${fullArgs.join(' ')}`);
+    const startedAt = Date.now();
     try {
       const { stdout } = await execFileAsync(this.binary, fullArgs, {
         maxBuffer: 64 * 1024 * 1024,
       });
+      this.logger.log(`yt-dlp done in ${elapsedSeconds(startedAt)}`);
       return stdout;
     } catch (err) {
       const { stdout = '', stderr = '' } = err as { stdout?: string; stderr?: string };
-      this.logger.error(`yt-dlp failed (${fullArgs.join(' ')}): ${stderr || String(err)}`);
+      this.logger.error(
+        `yt-dlp failed after ${elapsedSeconds(startedAt)} (${fullArgs.join(' ')}): ${stderr || String(err)}`,
+      );
       throw Object.assign(new Error('yt-dlp failed'), { stdout, stderr });
     }
   }
