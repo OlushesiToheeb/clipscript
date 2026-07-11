@@ -6,3 +6,4 @@ dist/
 bin/yt-dlp
 .DS_Store
 *.log
+.idea/
