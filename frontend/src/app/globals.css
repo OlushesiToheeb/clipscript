@@ -1,16 +1,23 @@
 @import "tailwindcss";
 
 :root {
-  --paper: oklch(0.966 0.011 84);
-  --ink: oklch(0.28 0.024 55);
-  --ink-soft: oklch(0.46 0.02 55);
-  --ink-faint: oklch(0.63 0.016 62);
-  --rule: oklch(0.86 0.016 78);
-  --vermillion: oklch(0.55 0.19 32);
+  color-scheme: dark;
+
+  /* Deep, warm charcoal — a darkened cinema, never flat black. */
+  --screen: oklch(0.158 0.012 58);
+  --surface: oklch(0.212 0.014 58);
+  --ink: oklch(0.938 0.01 85);
+  --ink-soft: oklch(0.72 0.014 76);
+  --ink-faint: oklch(0.545 0.016 66);
+  --rule: oklch(0.36 0.012 62);
+  /* Warm ember — the projector's glow, not a neon accent. */
+  --vermillion: oklch(0.7 0.188 42);
+  --vermillion-bright: oklch(0.79 0.17 52);
 }
 
 @theme inline {
-  --color-paper: var(--paper);
+  --color-screen: var(--screen);
+  --color-surface: var(--surface);
   --color-ink: var(--ink);
   --color-ink-soft: var(--ink-soft);
   --color-ink-faint: var(--ink-faint);
@@ -20,74 +27,177 @@
   --font-serif: var(--font-newsreader);
 }
 
+html {
+  background: var(--screen);
+}
+
 body {
-  background: var(--paper);
+  background: var(--screen);
   color: var(--ink);
   font-family: var(--font-newsreader), Georgia, "Times New Roman", serif;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 ::selection {
-  background: color-mix(in oklch, var(--vermillion) 22%, var(--paper));
+  background: color-mix(in oklch, var(--vermillion) 32%, transparent);
+  color: var(--ink);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--rule);
+  border: 3px solid var(--screen);
+  border-radius: 999px;
 }
 
 .micro {
   font-family: var(--font-newsreader), Georgia, serif;
   font-size: 0.6875rem;
   font-weight: 500;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
 }
 
-@keyframes rise {
+/* ── The filmic frame ─────────────────────────────────────── */
+
+/* A faint warm glow at the top (the projector) fading into darkened
+   corners (the vignette) — this is what makes the screen feel lit. */
+.vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      100% 70% at 50% -8%,
+      color-mix(in oklch, var(--vermillion) 9%, transparent),
+      transparent 58%
+    ),
+    radial-gradient(
+      140% 120% at 50% 48%,
+      transparent 52%,
+      color-mix(in oklch, black 58%, transparent) 100%
+    );
+}
+
+/* Film grain — a live, restless texture over everything. Subtle. */
+.grain {
+  position: fixed;
+  inset: -30%;
+  z-index: 40;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation: grain 0.55s steps(3) infinite;
+}
+
+@keyframes grain {
+  0% { transform: translate(0, 0); }
+  33% { transform: translate(-2%, 1.5%); }
+  66% { transform: translate(1.5%, -2%); }
+  100% { transform: translate(0, 0); }
+}
+
+/* The paste line — a marquee that lights up as you fill it in. */
+.marquee {
+  border-bottom: 1px solid var(--rule);
+  transition:
+    border-color 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.marquee:focus-within {
+  border-color: var(--vermillion);
+  box-shadow: 0 26px 55px -34px color-mix(in oklch, var(--vermillion) 85%, transparent);
+}
+
+/* ── Motion ───────────────────────────────────────────────── */
+
+/* Rack focus: content resolves from blurred and low to sharp and
+   settled — the camera finding its subject. */
+@keyframes focus-in {
   from {
     opacity: 0;
-    transform: translateY(14px);
+    filter: blur(10px);
+    transform: translateY(18px);
   }
   to {
     opacity: 1;
+    filter: blur(0);
     transform: translateY(0);
   }
 }
 
 .reveal {
-  animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: focus-in 0.85s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.glow {
+  text-shadow: 0 0 22px color-mix(in oklch, var(--vermillion) 60%, transparent);
 }
 
 @keyframes blink {
-  0%,
-  49% {
-    opacity: 1;
-  }
-  50%,
-  100% {
-    opacity: 0;
-  }
+  0%, 45% { opacity: 1; }
+  50%, 100% { opacity: 0; }
 }
 
 .cursor-blink {
-  animation: blink 1.1s step-end infinite;
+  animation: blink 1.05s step-end infinite;
   color: var(--vermillion);
+  text-shadow: 0 0 20px color-mix(in oklch, var(--vermillion) 70%, transparent);
 }
 
+/* A held breath on the processing line — glow swelling and receding. */
 @keyframes breathe {
-  0%,
-  100% {
-    opacity: 0.55;
+  0%, 100% {
+    opacity: 0.62;
+    text-shadow: 0 0 0 transparent;
   }
   50% {
     opacity: 1;
+    text-shadow: 0 0 26px color-mix(in oklch, var(--vermillion) 32%, transparent);
   }
 }
 
 .breathe {
-  animation: breathe 2.6s ease-in-out infinite;
+  animation: breathe 2.8s ease-in-out infinite;
+}
+
+/* A light sweeping across the processing track, like film through a gate. */
+@keyframes sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(320%); }
+}
+
+.sweep-track {
+  position: relative;
+  overflow: hidden;
+  background: var(--rule);
+}
+.sweep-track::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--vermillion),
+    transparent
+  );
+  animation: sweep 1.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .reveal,
+  .grain { animation: none; }
+  .reveal { animation: none; }
   .cursor-blink,
-  .breathe {
-    animation: none;
+  .breathe { animation: none; }
+  .sweep-track::after { animation: none; opacity: 0.5; }
+  @keyframes focus-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 }

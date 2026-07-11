@@ -67,11 +67,11 @@ function toParagraphs(text: string): string[] {
 }
 
 function stageLine(platform: Platform, elapsed: number): string {
-  if (elapsed < 4) return "Reaching the video…";
+  if (elapsed < 4) return "Reaching the video";
   if (platform === "youtube") {
-    return elapsed < 14 ? "Pulling captions…" : "Setting the type…";
+    return elapsed < 14 ? "Pulling captions" : "Setting the type";
   }
-  return elapsed < 20 ? "Listening to the audio…" : "Writing it all down…";
+  return elapsed < 20 ? "Listening to the audio" : "Writing it all down";
 }
 
 export default function Home() {
@@ -204,21 +204,26 @@ export default function Home() {
   const readingMinutes = Math.max(1, Math.round(words / 220));
 
   return (
-    <div className="mx-auto max-w-2xl px-6 pb-24 pt-16 sm:px-10 sm:pt-24">
-      <header>
-        <h1 className="font-display text-5xl font-semibold leading-none tracking-tight sm:text-6xl">
-          Clipscript
+    <div className="mx-auto max-w-2xl px-6 pb-32 pt-16 sm:px-10 sm:pt-24">
+      <header className="reveal">
+        <p className="micro text-vermillion">Video, read aloud on the page</p>
+        <h1 className="mt-4 font-display text-6xl font-semibold leading-[0.9] tracking-tight sm:text-7xl">
+          Clipscript<span className="text-vermillion glow">.</span>
         </h1>
-        <p className="mt-3 font-serif text-lg italic text-ink-soft">
+        <p className="mt-4 font-serif text-xl italic text-ink-soft">
           Every word, lifted from the video.
         </p>
       </header>
 
-      <form onSubmit={submit} className="mt-14">
+      <form
+        onSubmit={submit}
+        className="reveal mt-14"
+        style={{ animationDelay: "90ms" }}
+      >
         <label htmlFor="url" className="micro block text-ink-faint">
           Paste a video link
         </label>
-        <div className="mt-3 flex items-baseline gap-4 border-b border-ink/40 pb-3">
+        <div className="marquee mt-3 flex items-baseline gap-4 pb-3">
           <input
             id="url"
             type="url"
@@ -227,7 +232,7 @@ export default function Home() {
             placeholder="https://www.youtube.com/watch?v=…"
             spellCheck={false}
             autoComplete="off"
-            className="min-w-0 flex-1 bg-transparent font-display text-xl outline-none placeholder:text-ink-faint/70 sm:text-2xl"
+            className="min-w-0 flex-1 bg-transparent font-display text-xl caret-vermillion outline-none placeholder:text-ink-faint/60 sm:text-2xl"
           />
           <button
             type="submit"
@@ -237,7 +242,7 @@ export default function Home() {
           </button>
         </div>
         {submitError && (
-          <p className="mt-4 font-serif italic text-vermillion">
+          <p className="reveal mt-4 font-serif italic text-vermillion">
             — {submitError}
           </p>
         )}
@@ -245,36 +250,59 @@ export default function Home() {
 
       <main className="mt-16">
         {!current && (
-          <section className="reveal">
+          <section
+            className="reveal"
+            style={{ animationDelay: "170ms" }}
+          >
             <p className="micro text-ink-faint">Takes links from</p>
-            <ul className="mt-4 space-y-3 border-l border-rule pl-5">
-              <li>
-                <span className="font-display font-medium">YouTube</span>{" "}
-                <span className="font-serif italic text-ink-faint">
-                  — youtube.com/watch?v=… , youtu.be/… , shorts
-                </span>
-              </li>
-              <li>
-                <span className="font-display font-medium">TikTok</span>{" "}
-                <span className="font-serif italic text-ink-faint">
-                  — tiktok.com/@name/video/…
-                </span>
-              </li>
-              <li>
-                <span className="font-display font-medium">Instagram</span>{" "}
-                <span className="font-serif italic text-ink-faint">
-                  — instagram.com/reel/…
-                </span>
-              </li>
+            <ul className="mt-5 space-y-4">
+              {[
+                ["YouTube", "youtube.com/watch?v=… , youtu.be/… , shorts"],
+                ["TikTok", "tiktok.com/@name/video/…"],
+                ["Instagram", "instagram.com/reel/…"],
+              ].map(([name, hint]) => (
+                <li key={name} className="flex items-baseline gap-4">
+                  <span className="text-vermillion" aria-hidden>
+                    —
+                  </span>
+                  <span>
+                    <span className="font-display text-lg font-medium">
+                      {name}
+                    </span>{" "}
+                    <span className="font-serif italic text-ink-faint">
+                      {hint}
+                    </span>
+                  </span>
+                </li>
+              ))}
             </ul>
           </section>
         )}
 
         {current?.status === "processing" && (
-          <p className="breathe font-serif text-lg italic text-ink-soft">
-            {stageLine(current.platform, elapsed)}
-            <span className="cursor-blink not-italic">▍</span>
-          </p>
+          <section aria-live="polite">
+            <p className="breathe font-serif text-2xl italic text-ink sm:text-3xl">
+              {stageLine(current.platform, elapsed)}
+              <span className="cursor-blink not-italic">▍</span>
+            </p>
+            <div className="sweep-track mt-8 h-px w-full" />
+            <p className="micro mt-4 text-ink-faint">
+              {PLATFORM_LABEL[current.platform]} · {elapsed}s elapsed
+            </p>
+            {elapsed > 90 && (
+              <p className="reveal mt-5 max-w-[55ch] font-serif text-base italic text-ink-faint">
+                Longer or private videos can take a few minutes.{" "}
+                <button
+                  type="button"
+                  onClick={() => setCurrent(null)}
+                  className="cursor-pointer not-italic text-ink-soft underline decoration-rule underline-offset-4 transition-colors hover:text-vermillion"
+                >
+                  Start over
+                </button>{" "}
+                — it&apos;ll still land in your history when it finishes.
+              </p>
+            )}
+          </section>
         )}
 
         {current?.status === "failed" && (
@@ -282,11 +310,11 @@ export default function Home() {
             <p className="micro text-ink-faint">
               {PLATFORM_LABEL[current.platform]} · editor&apos;s note
             </p>
-            <p className="mt-4 max-w-[65ch] font-serif text-lg italic leading-relaxed text-vermillion">
+            <p className="mt-4 max-w-[65ch] font-serif text-xl italic leading-relaxed text-vermillion">
               {current.error ??
                 "Something went wrong with this one, and the video kept its words."}
             </p>
-            <p className="mt-3 break-all font-serif text-sm text-ink-faint">
+            <p className="mt-4 break-all font-serif text-sm text-ink-faint">
               {current.url}
             </p>
           </article>
@@ -295,14 +323,14 @@ export default function Home() {
         {current?.status === "completed" && current.text && (
           <article key={current.id}>
             <h2
-              className="reveal font-display text-3xl font-medium leading-tight sm:text-4xl"
+              className="reveal font-display text-4xl font-medium leading-[1.05] sm:text-5xl"
               style={{ animationDelay: "0ms" }}
             >
               {current.title ?? current.url}
             </h2>
             <div
-              className="reveal mt-4 flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-rule pb-4"
-              style={{ animationDelay: "80ms" }}
+              className="reveal mt-6 flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-rule pb-5"
+              style={{ animationDelay: "90ms" }}
             >
               <span className="micro text-ink-faint">
                 {[
@@ -331,12 +359,12 @@ export default function Home() {
                 {copied ? "Copied" : "Copy transcript"}
               </button>
             </div>
-            <div className="mt-8 max-w-[65ch] space-y-6">
+            <div className="mt-9 max-w-[65ch] space-y-6">
               {toParagraphs(current.text).map((paragraph, i) => (
                 <p
                   key={i}
-                  className="reveal font-serif text-[1.125rem] leading-[1.7]"
-                  style={{ animationDelay: `${160 + Math.min(i, 8) * 70}ms` }}
+                  className="reveal font-serif text-[1.19rem] leading-[1.75] text-ink/95"
+                  style={{ animationDelay: `${180 + Math.min(i, 8) * 80}ms` }}
                 >
                   {paragraph}
                 </p>
@@ -347,7 +375,7 @@ export default function Home() {
       </main>
 
       {history.length > 0 && (
-        <aside className="mt-20">
+        <aside className="mt-24">
           <h2 className="micro border-b border-rule pb-3 text-ink-faint">
             Previously
           </h2>
@@ -355,17 +383,17 @@ export default function Home() {
             {history.map((item) => (
               <li
                 key={item.id}
-                className="group flex items-baseline gap-3 border-b border-rule/60 py-3"
+                className="group -mx-3 flex items-baseline gap-3 rounded-md border-b border-rule/50 px-3 py-3.5 transition-colors hover:bg-surface"
               >
                 <button
                   type="button"
                   onClick={() => openItem(item)}
                   className="min-w-0 flex-1 cursor-pointer text-left"
                 >
-                  <span className="block truncate font-serif text-base transition-colors group-hover:text-vermillion">
+                  <span className="block truncate font-serif text-lg transition-colors group-hover:text-vermillion">
                     {item.title ?? item.url}
                   </span>
-                  <span className="micro mt-1 block text-ink-faint">
+                  <span className="micro mt-1.5 block text-ink-faint">
                     {PLATFORM_LABEL[item.platform]} ·{" "}
                     {formatDate(item.createdAt)}
                     {item.status !== "completed" ? ` · ${item.status}` : ""}
@@ -375,7 +403,7 @@ export default function Home() {
                   type="button"
                   onClick={() => removeItem(item.id)}
                   aria-label={`Delete ${item.title ?? item.url}`}
-                  className="cursor-pointer text-ink-faint opacity-0 transition-opacity hover:text-vermillion focus-visible:opacity-100 group-hover:opacity-100"
+                  className="cursor-pointer text-lg text-ink-faint opacity-0 transition-opacity hover:text-vermillion focus-visible:opacity-100 group-hover:opacity-100"
                 >
                   ×
                 </button>

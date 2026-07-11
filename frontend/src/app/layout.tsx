@@ -27,7 +27,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${fraunces.variable} ${newsreader.variable}`}>
-      <body>{children}</body>
+      <body>
+        <div className="vignette" aria-hidden />
+        <div className="relative z-10">{children}</div>
+        <div className="grain" aria-hidden />
+      </body>
     </html>
   );
 }
