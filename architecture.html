@@ -462,14 +462,14 @@
         <g>
           <rect class="n-accent" x="34" y="96" width="118" height="48" rx="10"></rect>
           <text class="n-label" x="93" y="118" text-anchor="middle" font-size="13">Next.js page</text>
-          <text class="n-sub" x="93" y="133" text-anchor="middle">paste · poll · read</text>
+          <text class="n-sub" x="93" y="133" text-anchor="middle">paste · read · history</text>
         </g>
 
         <!-- Controller -->
         <g>
           <rect class="n-fill n-stroke" x="244" y="96" width="240" height="54" rx="10" stroke-width="1.5"></rect>
           <text class="n-label" x="364" y="118" text-anchor="middle">Controller</text>
-          <text class="n-sub" x="364" y="135" text-anchor="middle">POST · GET · GET/:id · DELETE</text>
+          <text class="n-sub" x="364" y="135" text-anchor="middle">POST · GET /:token</text>
         </g>
         <!-- Service -->
         <g>
@@ -494,7 +494,7 @@
         <g>
           <rect class="n-fill n-stroke" x="586" y="120" width="140" height="50" rx="10" stroke-width="1.5"></rect>
           <text class="n-label" x="656" y="142" text-anchor="middle" font-size="13.5">PostgreSQL</text>
-          <text class="n-sub" x="656" y="158" text-anchor="middle">store + cache</text>
+          <text class="n-sub" x="656" y="158" text-anchor="middle">public cache</text>
         </g>
         <!-- OpenAI -->
         <g>
@@ -535,9 +535,10 @@
       <p class="eyebrow dim">The record</p>
       <h2>One row per transcript</h2>
       <p>
-        A single table holds everything — it is the transcript, the history feed,
-        and the cache all at once. The normalized link is the key that stops the
-        same video being processed twice.
+        There's no login, so the server keeps only public content: this one table is a
+        <strong>cache</strong> of transcripts keyed by the normalized link, with no notion
+        of who made them. Your own history lives in your browser, not here. The normalized
+        link stops the same public video being processed twice.
       </p>
     </div>
     <div class="record">
@@ -574,7 +575,7 @@
       ["TikTok transcription", "Audio pulled and transcribed end to end"],
       ["Instagram transcription", "Works with a signed-in session for private reels"],
       ["Smart dedupe", "The same link is never transcribed twice"],
-      ["History &amp; delete", "Every transcript is kept, browsable, removable"],
+      ["Private by default", "No login — your history stays in your browser, not shared"],
       ["Step-by-step logging", "The backend narrates each stage as it runs"],
       ["Interrupted-job recovery", "A restart never leaves a job spinning forever"],
       ["Hard timeouts", "A stuck download fails cleanly instead of hanging"],

@@ -18,7 +18,7 @@ flowchart LR
     end
 
     subgraph Server["Backend — NestJS (port 4600)"]
-        CTRL["TranscriptsController<br/>POST / GET / GET:id / DELETE"]
+        CTRL["TranscriptsController<br/>POST / GET /:token"]
         SVC["TranscriptsService<br/>(the pipeline)"]
         YT["YtdlpService"]
         TX["TranscriptionService"]
@@ -48,12 +48,12 @@ flowchart LR
 
 | Part | Job |
 |------|-----|
-| **Next.js page** | Single screen: paste box, live status, transcript, history list. Talks to the backend over `fetch`. |
-| **TranscriptsController** | The HTTP surface — 4 routes, thin. Validates the request body, sets status codes. |
+| **Next.js page** | Single screen: paste box, live status, transcript, and history kept **in the browser** (localStorage). Talks to the backend over `fetch`. |
+| **TranscriptsController** | The HTTP surface — 2 routes (create, read-by-token), thin. Validates the body, sets status codes. |
 | **TranscriptsService** | The brain. URL validation, dedupe/cache, and the async processing pipeline. |
 | **YtdlpService** | Wraps the `yt-dlp` binary: fetch metadata, pull captions, download audio. |
 | **TranscriptionService** | Wraps OpenAI speech-to-text. **This is the swappable piece** (see §5). |
-| **PostgreSQL** | Stores every transcript — doubles as the cache and the history list. |
+| **PostgreSQL** | The public-content cache (YouTube/TikTok, keyed by URL). History is not here — it lives on each device. |
 
 ---
 
@@ -78,10 +78,10 @@ sequenceDiagram
     SVC->>SVC: detectPlatform + normalizeUrl
     alt not a recognized video URL
         SVC-->>UI: 400 Bad Request (friendly message)
-    else already transcribed or in progress
+    else cached — YouTube/TikTok only
         SVC->>DB: find row (same URL, completed|processing)
         DB-->>SVC: existing row
-        SVC-->>UI: 200 + cached transcript (created:false)
+        SVC-->>UI: 200 + cached transcript + token (created:false)
     else new URL
         SVC->>DB: insert row (status: processing)
         SVC-->>UI: 201 + row (created:true)
@@ -90,14 +90,14 @@ sequenceDiagram
     end
 
     loop every 1.5s while status = processing
-        UI->>API: GET /transcripts/:id
+        UI->>API: GET /transcripts/:token
         API-->>UI: current row
     end
 
     Pipe->>DB: update row → completed | failed
-    UI->>API: GET /transcripts/:id (next poll)
+    UI->>API: GET /transcripts/:token (next poll)
     API-->>UI: completed row (title, text, source)
-    UI->>UI: render transcript + refresh history
+    UI->>UI: render transcript + save to on-device history
 ```
 
 **Why polling and not websockets?** For a single-user personal app, a 1.5s poll is
@@ -162,7 +162,9 @@ flowchart TD
 
 ## 4. Data model
 
-One table does everything — it's the record, the cache, and the history feed.
+One table, `transcripts`, is the public-content **cache** — keyed by URL, with no notion of
+who made a transcript. (History is not stored here; it lives in each browser's localStorage.)
+The public handle is a signed **token**, not the raw `id`, so rows can't be enumerated.
 
 ```mermaid
 erDiagram
@@ -183,8 +185,9 @@ erDiagram
 
 - **`url` is normalized before storage** (`youtu.be/x`, `/shorts/x`, and `watch?v=x&…`
   all collapse to one canonical URL), so the same video is never processed twice.
-- **The cache lookup** is: newest row for this URL whose status is `completed` or
-  `processing`. A `failed` row does *not* block a retry.
+- **The cache lookup** (YouTube/TikTok only) is: newest row for this URL whose status is
+  `completed` or `processing`. A `failed` row does *not* block a retry. **Instagram is
+  never matched against the cache** — each request re-processes it.
 - No enum constraints in the DB — status/platform/source are plain strings, enforced in
   app code (team convention carried over from Seamless).
 

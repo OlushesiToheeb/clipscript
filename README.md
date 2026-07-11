@@ -62,11 +62,26 @@ flowchart LR
 
 ---
 
-## What's stored
+## What's stored (and where)
 
-There's exactly **one table, `transcripts`**, and it does three jobs at once — it's the **record**, the **history feed**, and the **cache**. Clipscript does *not* keep any audio or video files: those are downloaded to a temp folder and deleted immediately after each run. Just the text and its metadata are stored — one row per video, a few KB each.
+Clipscript has **no login**, so it's careful about what lives on the server versus your device.
 
-The normalized URL is the cache key, so `youtu.be/x`, `/shorts/x`, and `watch?v=x&…tracking…` all collapse to one row, and the same video is only ever fetched and transcribed **once**.
+- **The server is a public-content cache.** A transcript of a public video is public
+  content — the same for everyone — so it's cached in one `transcripts` table (keyed by
+  the normalized URL) and reused across requests. This saves time and OpenAI cost, and it
+  holds no notion of *who* made it. Caching applies to **YouTube and TikTok** only;
+  **Instagram is never served from the cache** (a reel may be private), so each Instagram
+  request re-processes and is only reachable with its own unguessable token.
+- **Your history lives in your browser** (localStorage), on your device alone. There's no
+  shared "everyone's transcripts" list, and deleting a history item just removes it
+  locally. That's how the no-login experience stays private.
+- **Reads use an unguessable token**, never a sequential id — so nobody can guess
+  `1, 2, 3, …` and read transcripts they didn't create.
+
+Clipscript keeps **no audio or video files** — those are downloaded to a temp folder and
+deleted immediately after each run. Only text and metadata are stored, a few KB per video.
+The normalized URL collapses `youtu.be/x`, `/shorts/x`, and `watch?v=x&…tracking…` to one
+cache entry, so a public video is fetched and transcribed only **once**.
 
 | Field | Type | What it holds |
 |-------|------|---------------|
@@ -122,6 +137,7 @@ All backend settings live in `backend/.env` (created from `backend/.env.example`
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
+| `TOKEN_SECRET` | _(dev default)_ | Signs transcript tokens. Set a long random string before deploying. |
 | `OPENAI_API_KEY` | _(empty)_ | Required for TikTok / Instagram / uncaptioned YouTube. Leave empty to run captions-only. |
 | `TRANSCRIBE_MODEL` | `gpt-4o-mini-transcribe` | OpenAI transcription model. |
 | `MAX_AUDIO_MINUTES` | `30` | Cap on the audio-transcription path (OpenAI charges per audio minute). |
@@ -138,16 +154,16 @@ The frontend reads `NEXT_PUBLIC_API_URL` (defaults to `http://localhost:4600`) f
 
 ## API
 
-Backend on port `4600`. Plain JSON, no envelope.
+Backend on port `4600`. Plain JSON, no envelope. Each transcript's only public handle is
+a signed `token` (never a raw id).
 
 | Method | Path | Body | Returns |
 |--------|------|------|---------|
-| `POST` | `/transcripts` | `{ "url": "…" }` | The transcript row — `201` if new (now `processing`), `200` if served from cache |
-| `GET` | `/transcripts` | — | Latest 50, newest first |
-| `GET` | `/transcripts/:id` | — | One row — poll this while `status` is `processing` |
-| `DELETE` | `/transcripts/:id` | — | `204` |
+| `POST` | `/transcripts` | `{ "url": "…" }` | The transcript with its `token` — `201` if new (now `processing`), `200` if served from cache (YouTube/TikTok) |
+| `GET` | `/transcripts/:token` | — | One transcript — poll this while `status` is `processing`. Invalid/forged token → `404` |
 
-See [`CONTRACT.md`](./CONTRACT.md) for the full contract.
+There's deliberately **no list endpoint and no server-side delete** — history lives in the
+browser, so one visitor can't see or remove another's transcripts. See [`CONTRACT.md`](./CONTRACT.md) for the full contract.
 
 ---
 

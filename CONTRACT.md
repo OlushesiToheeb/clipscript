@@ -26,11 +26,14 @@ Both services MUST follow it exactly.
 ```
 PORT=4600
 DATABASE_URL=postgres://clipscript:clipscript@localhost:5544/clipscript
+TOKEN_SECRET=              # signs transcript tokens; set a long random string before deploying
 OPENAI_API_KEY=            # only needed for TikTok / Instagram / uncaptioned YouTube
 TRANSCRIBE_MODEL=gpt-4o-mini-transcribe
 MAX_AUDIO_MINUTES=30
 YTDLP_PATH=                # optional override; default <root>/bin/yt-dlp, then `yt-dlp` on PATH
 IG_COOKIES_BROWSER=        # optional, e.g. "chrome" — passed as --cookies-from-browser for Instagram
+OPENAI_TIMEOUT_MS=240000   # hard timeout on the OpenAI call
+YTDLP_TIMEOUT_MS=240000    # hard timeout on each yt-dlp call
 ```
 
 `frontend/.env.local` (commit `.env.local.example`):
@@ -39,13 +42,28 @@ IG_COOKIES_BROWSER=        # optional, e.g. "chrome" — passed as --cookies-fro
 NEXT_PUBLIC_API_URL=http://localhost:4600
 ```
 
+## Privacy model (no login)
+
+There are no accounts, so the app must not let one visitor see another's transcripts:
+
+- **Server = public-content cache.** A transcript of a public video is public content,
+  so it is cached (keyed by normalized URL) and reused across requests — this saves cost
+  and time and leaks nothing. Caching applies to **youtube** and **tiktok** only.
+- **Instagram is never served from the cache.** A reel may be private, so every request
+  re-processes it; one visitor's Instagram transcript is never handed to another.
+- **History lives in the browser** (localStorage, per device). The server exposes no
+  "list everything" route.
+- **Reads are by unguessable token**, never by sequential id — so nobody can enumerate
+  `1, 2, 3, …`. The token is a signed id (`<id>.<hmac>` using `TOKEN_SECRET`); the raw id
+  is never exposed.
+
 ## API (plain JSON, no envelope)
 
 ### Transcript resource
 
 ```jsonc
 {
-  "id": 1,
+  "token": "1.aB3…",                // signed id; the only public handle (no raw id)
   "url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",   // normalized URL
   "platform": "youtube",            // "youtube" | "tiktok" | "instagram"
   "title": "Me at the zoo",         // string | null
@@ -63,13 +81,16 @@ NEXT_PUBLIC_API_URL=http://localhost:4600
 
 - `POST /transcripts` body `{ "url": "https://..." }`
   - 400 if the URL is not a recognizable YouTube / TikTok / Instagram video URL.
-  - Normalize the URL first. If a transcript already exists for the normalized URL
-    with status `completed` or `processing`, return that existing row (200) — no reprocessing.
+  - Normalize the URL first. For **youtube/tiktok**, if a transcript already exists for
+    the normalized URL with status `completed` or `processing`, return it (200) — no
+    reprocessing. **Instagram is never matched against the cache.**
   - Otherwise create a row with status `processing`, kick off processing
     **asynchronously** (fire-and-forget; do NOT block the request), return 201.
-- `GET /transcripts` → array, newest first, limit 50.
-- `GET /transcripts/:id` → single row or 404.
-- `DELETE /transcripts/:id` → 204 (hard delete) or 404.
+- `GET /transcripts/:token` → single row or 404. Poll this while `processing`. An invalid
+  or forged token is a 404.
+
+The client keeps its own history in localStorage and deletes locally, so there is no
+list endpoint and no server-side delete.
 
 CORS: allow origin `http://localhost:4601`.
 
