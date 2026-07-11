@@ -28,4 +28,7 @@ export class Transcript extends Model {
 
   @Column(DataType.INTEGER)
   durationSeconds!: number | null;
+
+  declare createdAt: Date;
+  declare updatedAt: Date;
 }

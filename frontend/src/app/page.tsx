@@ -9,13 +9,15 @@ import {
 } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4600";
+const HISTORY_KEY = "clipscript.history";
+const HISTORY_LIMIT = 60;
 
 type Platform = "youtube" | "tiktok" | "instagram";
 type Status = "processing" | "completed" | "failed";
 type Source = "captions" | "whisper" | null;
 
 interface Transcript {
-  id: number;
+  token: string;
   url: string;
   platform: Platform;
   title: string | null;
@@ -33,6 +35,25 @@ const PLATFORM_LABEL: Record<Platform, string> = {
   tiktok: "TikTok",
   instagram: "Instagram",
 };
+
+// History lives on this device only — no account, no shared list.
+function loadStored(): Transcript[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]");
+    return Array.isArray(parsed) ? (parsed as Transcript[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStored(items: Transcript[]): void {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(0, HISTORY_LIMIT)));
+  } catch {
+    // Storage unavailable or full — history simply won't persist.
+  }
+}
 
 function formatDuration(seconds: number | null): string | null {
   if (seconds == null) return null;
@@ -83,29 +104,36 @@ export default function Home() {
   const [elapsed, setElapsed] = useState(0);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const loadHistory = useCallback(async () => {
-    try {
-      const res = await fetch(`${API}/transcripts`);
-      if (res.ok) setHistory(await res.json());
-    } catch {
-      // API not reachable — history stays empty.
-    }
+  const upsert = useCallback((t: Transcript) => {
+    setHistory((prev) => {
+      const next = [t, ...prev.filter((x) => x.token !== t.token)].slice(0, HISTORY_LIMIT);
+      saveStored(next);
+      return next;
+    });
   }, []);
 
+  // Load this device's history, then reconcile anything left mid-flight
+  // (a tab closed before its transcript finished).
   useEffect(() => {
+    const stored = loadStored();
+    setHistory(stored);
     let cancelled = false;
-    fetch(`${API}/transcripts`)
-      .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then((rows: Transcript[]) => {
-        if (!cancelled) setHistory(rows);
-      })
-      .catch(() => {
-        // API not reachable — history stays empty.
+    stored
+      .filter((t) => t.status === "processing")
+      .forEach((t) => {
+        fetch(`${API}/transcripts/${t.token}`)
+          .then((res) => (res.ok ? res.json() : Promise.reject()))
+          .then((next: Transcript) => {
+            if (!cancelled && next.status !== "processing") upsert(next);
+          })
+          .catch(() => {
+            // Leave it; a later poll or refresh can reconcile.
+          });
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [upsert]);
 
   useEffect(() => {
     if (!current || current.status !== "processing") return;
@@ -116,12 +144,12 @@ export default function Home() {
     );
     const poll = setInterval(async () => {
       try {
-        const res = await fetch(`${API}/transcripts/${current.id}`);
+        const res = await fetch(`${API}/transcripts/${current.token}`);
         if (!res.ok) return;
         const next: Transcript = await res.json();
         if (next.status !== "processing") {
           setCurrent(next);
-          loadHistory();
+          upsert(next);
         }
       } catch {
         // Keep polling; the API may come back.
@@ -131,7 +159,7 @@ export default function Home() {
       clearInterval(clock);
       clearInterval(poll);
     };
-  }, [current, loadHistory]);
+  }, [current, upsert]);
 
   useEffect(() => {
     return () => {
@@ -165,8 +193,8 @@ export default function Home() {
       }
       setElapsed(0);
       setCurrent(data);
+      upsert(data);
       setUrl("");
-      loadHistory();
     } catch {
       setSubmitError(
         "The Clipscript API is not answering. Start the backend on port 4600 and try again."
@@ -182,14 +210,13 @@ export default function Home() {
     copyTimer.current = setTimeout(() => setCopied(false), 2000);
   }
 
-  async function removeItem(id: number) {
-    try {
-      await fetch(`${API}/transcripts/${id}`, { method: "DELETE" });
-      setHistory((h) => h.filter((t) => t.id !== id));
-      if (current?.id === id) setCurrent(null);
-    } catch {
-      // Leave the row; a refresh will reconcile.
-    }
+  function removeItem(token: string) {
+    setHistory((prev) => {
+      const next = prev.filter((t) => t.token !== token);
+      saveStored(next);
+      return next;
+    });
+    if (current?.token === token) setCurrent(null);
   }
 
   function openItem(item: Transcript) {
@@ -306,7 +333,7 @@ export default function Home() {
         )}
 
         {current?.status === "failed" && (
-          <article key={current.id} className="reveal">
+          <article key={current.token} className="reveal">
             <p className="micro text-ink-faint">
               {PLATFORM_LABEL[current.platform]} · editor&apos;s note
             </p>
@@ -321,7 +348,7 @@ export default function Home() {
         )}
 
         {current?.status === "completed" && current.text && (
-          <article key={current.id}>
+          <article key={current.token}>
             <h2
               className="reveal font-display text-4xl font-medium leading-[1.05] sm:text-5xl"
               style={{ animationDelay: "0ms" }}
@@ -377,12 +404,12 @@ export default function Home() {
       {history.length > 0 && (
         <aside className="mt-24">
           <h2 className="micro border-b border-rule pb-3 text-ink-faint">
-            Previously
+            Previously · on this device
           </h2>
           <ul>
             {history.map((item) => (
               <li
-                key={item.id}
+                key={item.token}
                 className="group -mx-3 flex items-baseline gap-3 rounded-md border-b border-rule/50 px-3 py-3.5 transition-colors hover:bg-surface"
               >
                 <button
@@ -401,8 +428,8 @@ export default function Home() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => removeItem(item.id)}
-                  aria-label={`Delete ${item.title ?? item.url}`}
+                  onClick={() => removeItem(item.token)}
+                  aria-label={`Remove ${item.title ?? item.url}`}
                   className="cursor-pointer text-lg text-ink-faint opacity-0 transition-opacity hover:text-vermillion focus-visible:opacity-100 group-hover:opacity-100"
                 >
                   ×

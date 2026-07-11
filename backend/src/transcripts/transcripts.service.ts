@@ -11,7 +11,9 @@ import { promises as fs } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { Op } from 'sequelize';
+import { Platform } from '../types';
 import { parseJson3Captions } from './captions.utils';
+import { tokenFor, idFromToken } from './token.utils';
 import { Transcript } from './transcript.model';
 import { TranscriptionService } from './transcription.service';
 import { elapsedSeconds } from './time.utils';
@@ -20,6 +22,26 @@ import { YtdlpService } from './ytdlp.service';
 
 const NO_KEY_ERROR =
   'This video has no captions — transcribing its audio needs an OpenAI API key. Set OPENAI_API_KEY in backend/.env and retry.';
+
+// A transcript of a public video is public content, so caching it (keyed by URL)
+// helps everyone and leaks nothing. A private Instagram reel is not public, so it
+// is never served from the shared cache — each request re-processes it, and its
+// row is only reachable with its own unguessable token.
+const CACHEABLE: Platform[] = ['youtube', 'tiktok'];
+
+export interface PublicTranscript {
+  token: string;
+  url: string;
+  platform: Platform;
+  title: string | null;
+  status: Transcript['status'];
+  source: Transcript['source'];
+  text: string | null;
+  error: string | null;
+  durationSeconds: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 const INTERRUPTED_ERROR =
   'Transcribing was interrupted (the server restarted). Please paste the link again.';
@@ -54,13 +76,15 @@ export class TranscriptsService implements OnModuleInit {
       throw new BadRequestException('Not a recognizable YouTube, TikTok or Instagram video URL.');
     }
 
-    const existing = await this.transcriptModel.findOne({
-      where: { url, status: { [Op.in]: ['completed', 'processing'] } },
-      order: [['id', 'DESC']],
-    });
-    if (existing) {
-      this.logger.log(`#${existing.id} cache hit (${existing.status}) — reusing for ${url}`);
-      return { transcript: existing, created: false };
+    if (CACHEABLE.includes(platform)) {
+      const existing = await this.transcriptModel.findOne({
+        where: { url, status: { [Op.in]: ['completed', 'processing'] } },
+        order: [['id', 'DESC']],
+      });
+      if (existing) {
+        this.logger.log(`#${existing.id} cache hit (${existing.status}) — reusing for ${url}`);
+        return { transcript: existing, created: false };
+      }
     }
 
     const transcript = await this.transcriptModel.create({ url, platform, status: 'processing' });
@@ -69,19 +93,29 @@ export class TranscriptsService implements OnModuleInit {
     return { transcript, created: true };
   }
 
-  async findAll(): Promise<Transcript[]> {
-    return this.transcriptModel.findAll({ order: [['id', 'DESC']], limit: 50 });
-  }
-
-  async findOne(id: number): Promise<Transcript> {
-    const transcript = await this.transcriptModel.findByPk(id);
-    if (!transcript) throw new NotFoundException(`Transcript ${id} not found`);
+  async findByToken(token: string): Promise<Transcript> {
+    const id = idFromToken(token);
+    const transcript = id ? await this.transcriptModel.findByPk(id) : null;
+    if (!transcript) throw new NotFoundException('Transcript not found');
     return transcript;
   }
 
-  async remove(id: number): Promise<void> {
-    const transcript = await this.findOne(id);
-    await transcript.destroy();
+  // The public shape — a signed token instead of the raw id, and no internal
+  // columns. This is the only representation that leaves the server.
+  toPublic(t: Transcript): PublicTranscript {
+    return {
+      token: tokenFor(t.id),
+      url: t.url,
+      platform: t.platform,
+      title: t.title,
+      status: t.status,
+      source: t.source,
+      text: t.text,
+      error: t.error,
+      durationSeconds: t.durationSeconds,
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+    };
   }
 
   private async process(transcript: Transcript): Promise<void> {
