@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import ffmpegPath from 'ffmpeg-static';
 import { promises as fs } from 'fs';
@@ -15,8 +21,11 @@ import { YtdlpService } from './ytdlp.service';
 const NO_KEY_ERROR =
   'This video has no captions — transcribing its audio needs an OpenAI API key. Set OPENAI_API_KEY in backend/.env and retry.';
 
+const INTERRUPTED_ERROR =
+  'Transcribing was interrupted (the server restarted). Please paste the link again.';
+
 @Injectable()
-export class TranscriptsService {
+export class TranscriptsService implements OnModuleInit {
   private readonly logger = new Logger(TranscriptsService.name);
 
   constructor(
@@ -24,6 +33,19 @@ export class TranscriptsService {
     private readonly ytdlp: YtdlpService,
     private readonly transcription: TranscriptionService,
   ) {}
+
+  // Processing runs in-memory and detached, so a row left as 'processing' after
+  // a restart is orphaned — its work is gone and nothing will ever finish it.
+  // Fail those rows on boot so they stop spinning and can be retried.
+  async onModuleInit(): Promise<void> {
+    const [count] = await this.transcriptModel.update(
+      { status: 'failed', error: INTERRUPTED_ERROR },
+      { where: { status: 'processing' } },
+    );
+    if (count > 0) {
+      this.logger.warn(`Recovered ${count} interrupted transcript(s) left in 'processing' on startup.`);
+    }
+  }
 
   async create(rawUrl: string): Promise<{ transcript: Transcript; created: boolean }> {
     const platform = detectPlatform(rawUrl);

@@ -15,7 +15,11 @@ export class TranscriptionService {
   }
 
   async transcribe(audioPath: string): Promise<string> {
-    this.client ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    this.client ??= new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      // Fail rather than hang forever if the API stalls.
+      timeout: Number(process.env.OPENAI_TIMEOUT_MS) || 240000,
+    });
     const result = await this.client.audio.transcriptions.create({
       model: this.model,
       file: createReadStream(audioPath),

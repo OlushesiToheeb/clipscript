@@ -37,6 +37,9 @@ export class YtdlpService {
     try {
       const { stdout } = await execFileAsync(this.binary, fullArgs, {
         maxBuffer: 64 * 1024 * 1024,
+        // Kill a hung yt-dlp (e.g. Instagram stuck on a login wall) instead of
+        // letting the job spin forever.
+        timeout: Number(process.env.YTDLP_TIMEOUT_MS) || 240000,
       });
       this.logger.log(`yt-dlp done in ${elapsedSeconds(startedAt)}`);
       return stdout;
