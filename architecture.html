@@ -1,0 +1,603 @@
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Clipscript — How it works</title>
+
+<style>
+  :root {
+    --screen: #171310;
+    --screen-2: #100d0a;
+    --surface: #221c15;
+    --surface-2: #2b2318;
+    --ink: #f1eadf;
+    --ink-soft: #b7ac99;
+    --ink-faint: #8a7e6d;
+    --rule: #3a3125;
+    --ember: #e86a34;
+    --ember-soft: #c9531f;
+    --ember-glow: rgba(232, 106, 52, 0.28);
+    --live: #7fae7a;
+
+    --serif: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+
+    --measure: 62ch;
+  }
+
+  html {
+    box-sizing: border-box;
+    color-scheme: dark;
+  }
+  *, *::before, *::after { box-sizing: inherit; }
+
+  body {
+    margin: 0;
+    background: var(--screen);
+    color: var(--ink);
+    font-family: var(--serif);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* Filmic frame — same language as the app */
+  .vignette {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(100% 60% at 50% -6%, var(--ember-glow), transparent 55%),
+      radial-gradient(140% 120% at 50% 46%, transparent 50%, rgba(0, 0, 0, 0.55) 100%);
+  }
+  .grain {
+    position: fixed;
+    inset: -30%;
+    z-index: 60;
+    pointer-events: none;
+    opacity: 0.045;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    animation: grain 0.55s steps(3) infinite;
+  }
+  @keyframes grain {
+    0% { transform: translate(0, 0); }
+    33% { transform: translate(-2%, 1.5%); }
+    66% { transform: translate(1.5%, -2%); }
+    100% { transform: translate(0, 0); }
+  }
+
+  .wrap {
+    position: relative;
+    z-index: 1;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: clamp(3rem, 8vw, 6.5rem) clamp(1.25rem, 5vw, 3rem) 6rem;
+  }
+
+  .eyebrow {
+    font-family: var(--sans);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ember);
+  }
+  .eyebrow.dim { color: var(--ink-faint); }
+
+  h1 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(2.6rem, 7vw, 4.6rem);
+    line-height: 1.02;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    margin: 1rem 0 0;
+  }
+  h1 .dot { color: var(--ember); }
+
+  .lede {
+    max-width: var(--measure);
+    font-size: clamp(1.05rem, 1.6vw, 1.22rem);
+    color: var(--ink-soft);
+    margin: 1.5rem 0 0;
+  }
+
+  .stack {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 2rem;
+    align-items: center;
+  }
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--sans);
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--live);
+    padding: 0.34rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--live) 40%, transparent);
+    border-radius: 999px;
+  }
+  .status .pulse {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--live);
+    box-shadow: 0 0 10px var(--live);
+    animation: pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
+  .badge {
+    font-family: var(--sans);
+    font-size: 0.75rem;
+    color: var(--ink-soft);
+    padding: 0.34rem 0.7rem;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    background: var(--surface);
+  }
+
+  section { margin-top: clamp(3.5rem, 9vw, 6rem); }
+  .sec-head { max-width: var(--measure); }
+  h2 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(1.7rem, 3.6vw, 2.5rem);
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    margin: 0.7rem 0 0;
+  }
+  .sec-head p {
+    max-width: var(--measure);
+    color: var(--ink-soft);
+    font-size: 1.05rem;
+    margin: 0.9rem 0 0;
+  }
+
+  .figure {
+    margin-top: 2.4rem;
+    background: linear-gradient(180deg, var(--surface) 0%, var(--screen-2) 140%);
+    border: 1px solid var(--rule);
+    border-radius: 16px;
+    padding: clamp(1.25rem, 3vw, 2.2rem);
+    overflow-x: auto;
+  }
+  .figure svg { display: block; width: 100%; height: auto; min-width: 340px; }
+
+  /* SVG diagram vocabulary */
+  .n-fill { fill: var(--surface-2); }
+  .n-stroke { stroke: var(--rule); }
+  .n-accent { fill: color-mix(in srgb, var(--ember) 16%, var(--surface-2)); stroke: var(--ember); }
+  .n-label { fill: var(--ink); font-family: var(--sans); font-size: 15px; font-weight: 600; }
+  .n-sub { fill: var(--ink-faint); font-family: var(--sans); font-size: 11.5px; font-weight: 500; }
+  .flow { stroke: var(--rule); stroke-width: 1.75; fill: none; }
+  .flow-em { stroke: var(--ember); stroke-width: 2; fill: none; }
+  .flow-dash { stroke: var(--ember-soft); stroke-width: 1.5; fill: none; stroke-dasharray: 4 4; }
+  .edge-label { fill: var(--ink-soft); font-family: var(--sans); font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; }
+  .zone { fill: none; stroke: var(--rule); stroke-dasharray: 3 5; }
+  .zone-title { fill: var(--ember); font-family: var(--sans); font-size: 11px; font-weight: 700; letter-spacing: 0.16em; }
+
+  /* Two paths */
+  .paths { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 2.4rem; }
+  .path {
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    padding: 1.4rem;
+    background: var(--surface);
+  }
+  .path.audio { background: linear-gradient(180deg, color-mix(in srgb, var(--ember) 9%, var(--surface)) 0%, var(--surface) 70%); border-color: color-mix(in srgb, var(--ember) 35%, var(--rule)); }
+  .path .kicker { font-family: var(--sans); font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-faint); }
+  .path.audio .kicker { color: var(--ember); }
+  .path h3 { font-family: var(--serif); font-weight: 600; font-size: 1.35rem; margin: 0.5rem 0 0.2rem; }
+  .path .when { font-family: var(--sans); font-size: 0.82rem; color: var(--ink-soft); }
+  .path ol { font-family: var(--sans); font-size: 0.9rem; color: var(--ink-soft); margin: 1rem 0 0; padding-left: 1.1rem; line-height: 1.7; }
+  .path .tag { display: inline-block; margin-top: 1rem; font-family: var(--sans); font-size: 0.74rem; letter-spacing: 0.08em; color: var(--ink-faint); }
+
+  /* What's working grid */
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.9rem; margin-top: 2.4rem; }
+  .cap {
+    display: flex; gap: 0.85rem; align-items: flex-start;
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    padding: 1rem 1.1rem;
+    background: var(--surface);
+  }
+  .cap .tick {
+    flex: none; margin-top: 0.15rem;
+    width: 20px; height: 20px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: color-mix(in srgb, var(--live) 20%, transparent);
+    border: 1px solid color-mix(in srgb, var(--live) 55%, transparent);
+  }
+  .cap .tick svg { width: 11px; height: 11px; stroke: var(--live); }
+  .cap h4 { font-family: var(--sans); font-size: 0.94rem; font-weight: 650; margin: 0; }
+  .cap p { font-family: var(--sans); font-size: 0.82rem; color: var(--ink-faint); margin: 0.25rem 0 0; line-height: 1.5; }
+
+  /* Data model */
+  .record { margin-top: 2.4rem; border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; font-family: var(--sans); font-size: 0.88rem; }
+  th, td { text-align: left; padding: 0.7rem 1.1rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  thead th { font-size: 0.68rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-faint); font-weight: 600; background: var(--surface-2); }
+  tbody tr:last-child td { border-bottom: none; }
+  td.field { font-family: var(--mono); color: var(--ember); font-size: 0.82rem; white-space: nowrap; }
+  td.type { font-family: var(--mono); color: var(--ink-soft); font-size: 0.8rem; white-space: nowrap; }
+  td.note { color: var(--ink-soft); }
+
+  footer {
+    margin-top: clamp(4rem, 10vw, 7rem);
+    padding-top: 2rem;
+    border-top: 1px solid var(--rule);
+    display: flex; flex-wrap: wrap; gap: 1.2rem 2.5rem;
+    font-family: var(--sans); font-size: 0.82rem; color: var(--ink-faint);
+  }
+  footer b { color: var(--ink-soft); font-weight: 600; }
+
+  .reveal { opacity: 0; transform: translateY(20px); }
+  .reveal.in { opacity: 1; transform: none; transition: opacity 0.8s cubic-bezier(0.16,1,0.3,1), transform 0.8s cubic-bezier(0.16,1,0.3,1); }
+
+  @media (max-width: 640px) {
+    .paths, .grid { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .grain { animation: none; }
+    .status .pulse { animation: none; }
+    .reveal { opacity: 1; transform: none; }
+  }
+</style>
+
+<div class="vignette" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Clipscript · How it works</p>
+    <h1>Every word, lifted&nbsp;from the video<span class="dot">.</span></h1>
+    <p class="lede">
+      Paste a link from YouTube, TikTok, or Instagram. Clipscript pulls the full
+      transcript — captions when the video already has them, a clean audio
+      transcription when it doesn&rsquo;t — and keeps every one you&rsquo;ve made.
+    </p>
+    <div class="stack">
+      <span class="status"><span class="pulse"></span>Operational</span>
+      <span class="badge">NestJS</span>
+      <span class="badge">Next.js</span>
+      <span class="badge">PostgreSQL</span>
+      <span class="badge">yt-dlp</span>
+      <span class="badge">ffmpeg</span>
+      <span class="badge">OpenAI</span>
+    </div>
+  </header>
+
+  <!-- ─────────────────────── THE JOURNEY ─────────────────────── -->
+  <section class="reveal">
+    <div class="sec-head">
+      <p class="eyebrow dim">The pipeline</p>
+      <h2>The journey of a link</h2>
+      <p>
+        One paste kicks off a chain that runs on its own. The link is checked,
+        the video is reached, and Clipscript takes the fastest route to the words
+        — rejoining at the same place no matter which path it took.
+      </p>
+    </div>
+
+    <div class="figure">
+      <svg viewBox="0 0 720 700" role="img" aria-label="End-to-end pipeline from pasting a link to reading the transcript">
+        <defs>
+          <marker id="a1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--ember)"></path>
+          </marker>
+          <marker id="a1g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--rule)"></path>
+          </marker>
+        </defs>
+
+        <!-- connectors (drawn first, under nodes) -->
+        <path class="flow-em" d="M360,74 L360,104" marker-end="url(#a1)"></path>
+        <path class="flow-em" d="M360,164 L360,194" marker-end="url(#a1)"></path>
+        <!-- cache side note -->
+        <path class="flow-dash" d="M470,224 L604,224"></path>
+        <path class="flow-em" d="M360,254 L360,286" marker-end="url(#a1)"></path>
+
+        <!-- fork from decision -->
+        <path class="flow-em" d="M300,330 C220,344 190,352 190,382" marker-end="url(#a1)"></path>
+        <path class="flow-em" d="M420,330 C530,344 540,352 540,382" marker-end="url(#a1)"></path>
+        <!-- right lane down -->
+        <path class="flow-em" d="M540,436 L540,470" marker-end="url(#a1)"></path>
+        <!-- merges into save -->
+        <path class="flow-em" d="M190,436 C190,510 300,516 348,558" marker-end="url(#a1)"></path>
+        <path class="flow-em" d="M540,548 C540,516 420,516 372,558" marker-end="url(#a1)"></path>
+        <!-- save -> read -->
+        <path class="flow-em" d="M360,614 L360,644" marker-end="url(#a1)"></path>
+
+        <!-- edge labels -->
+        <text class="edge-label" x="214" y="360">YouTube · captions</text>
+        <text class="edge-label" x="452" y="360" text-anchor="start">no captions</text>
+
+        <!-- Node 1: Paste -->
+        <g>
+          <rect class="n-accent" x="250" y="20" width="220" height="54" rx="11"></rect>
+          <text class="n-label" x="360" y="44" text-anchor="middle">Paste a link</text>
+          <text class="n-sub" x="360" y="61" text-anchor="middle">YouTube · TikTok · Instagram</text>
+        </g>
+        <!-- Node 2: Validate -->
+        <g>
+          <rect class="n-fill n-stroke" x="230" y="110" width="260" height="54" rx="11" stroke-width="1.5"></rect>
+          <text class="n-label" x="360" y="134" text-anchor="middle">Validate &amp; normalize</text>
+          <text class="n-sub" x="360" y="151" text-anchor="middle">youtu.be, /shorts, tracking params → one link</text>
+        </g>
+        <!-- Node 3: Fetch -->
+        <g>
+          <rect class="n-fill n-stroke" x="240" y="200" width="240" height="54" rx="11" stroke-width="1.5"></rect>
+          <text class="n-label" x="360" y="224" text-anchor="middle">Fetch title + captions</text>
+          <text class="n-sub" x="360" y="241" text-anchor="middle">a single yt-dlp call</text>
+        </g>
+        <!-- Cache pill -->
+        <g>
+          <rect class="n-fill" x="604" y="204" width="112" height="42" rx="9" stroke="var(--ember-soft)" stroke-width="1.25" stroke-dasharray="4 4"></rect>
+          <text class="n-sub" x="660" y="222" text-anchor="middle" fill="var(--ink-soft)">Seen before?</text>
+          <text class="n-sub" x="660" y="237" text-anchor="middle" fill="var(--ember)">returned instantly</text>
+        </g>
+        <!-- Node 4: Decision diamond -->
+        <g>
+          <path class="n-accent" d="M360,286 L424,308 L360,330 L296,308 Z"></path>
+          <text class="n-label" x="360" y="313" text-anchor="middle" font-size="13">Captions?</text>
+        </g>
+        <!-- Node 5L: Read captions -->
+        <g>
+          <rect class="n-fill n-stroke" x="90" y="382" width="200" height="54" rx="11" stroke-width="1.5"></rect>
+          <text class="n-label" x="190" y="406" text-anchor="middle">Read the captions</text>
+          <text class="n-sub" x="190" y="423" text-anchor="middle">free · about 40 seconds</text>
+        </g>
+        <!-- Node 5R: Download audio -->
+        <g>
+          <rect class="n-fill n-stroke" x="440" y="382" width="200" height="54" rx="11" stroke-width="1.5"></rect>
+          <text class="n-label" x="540" y="406" text-anchor="middle">Download the audio</text>
+          <text class="n-sub" x="540" y="423" text-anchor="middle">yt-dlp → ffmpeg → mp3</text>
+        </g>
+        <!-- Node 6R: Transcribe -->
+        <g>
+          <rect class="n-accent" x="440" y="494" width="200" height="54" rx="11"></rect>
+          <text class="n-label" x="540" y="518" text-anchor="middle">Transcribe the speech</text>
+          <text class="n-sub" x="540" y="535" text-anchor="middle">OpenAI · gpt-4o-mini</text>
+        </g>
+        <!-- Node 7: Save -->
+        <g>
+          <rect class="n-fill n-stroke" x="250" y="560" width="220" height="54" rx="11" stroke-width="1.5"></rect>
+          <text class="n-label" x="360" y="584" text-anchor="middle">Save the transcript</text>
+          <text class="n-sub" x="360" y="601" text-anchor="middle">PostgreSQL</text>
+        </g>
+        <!-- Node 8: Read -->
+        <g>
+          <rect class="n-accent" x="260" y="644" width="200" height="50" rx="11"></rect>
+          <text class="n-label" x="360" y="674" text-anchor="middle">Read it on the page</text>
+        </g>
+      </svg>
+    </div>
+  </section>
+
+  <!-- ─────────────────────── TWO PATHS ─────────────────────── -->
+  <section class="reveal">
+    <div class="sec-head">
+      <p class="eyebrow dim">The fork</p>
+      <h2>Two ways to a transcript</h2>
+      <p>
+        Captions are free and fast, so Clipscript always tries them first. Only
+        when a video has none does it do the heavier work of listening to the audio.
+      </p>
+    </div>
+    <div class="paths">
+      <div class="path">
+        <p class="kicker">Path one · captions</p>
+        <h3>Straight from the source</h3>
+        <p class="when">Almost every YouTube video</p>
+        <ol>
+          <li>Pull the caption track with the video&rsquo;s details</li>
+          <li>Parse it into clean, readable text</li>
+          <li>Done — no download, no transcription</li>
+        </ol>
+        <span class="tag">≈ 40 seconds · no cost</span>
+      </div>
+      <div class="path audio">
+        <p class="kicker">Path two · audio</p>
+        <h3>Listen, then write it down</h3>
+        <p class="when">TikTok, Instagram &amp; caption-less video</p>
+        <ol>
+          <li>Download the audio and convert it to mp3</li>
+          <li>Send it to OpenAI for transcription</li>
+          <li>Store the finished text</li>
+        </ol>
+        <span class="tag">a few minutes · capped at 30 min</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────── THE SYSTEM ─────────────────────── -->
+  <section class="reveal">
+    <div class="sec-head">
+      <p class="eyebrow dim">The system</p>
+      <h2>What talks to what</h2>
+      <p>
+        A Next.js page in the browser, a NestJS backend that runs the pipeline,
+        one Postgres table, and the local tools it drives to reach each platform.
+      </p>
+    </div>
+
+    <div class="figure">
+      <svg viewBox="0 0 760 470" role="img" aria-label="Component map of the browser, backend, database and external tools">
+        <defs>
+          <marker id="a2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--ember)"></path>
+          </marker>
+        </defs>
+
+        <!-- zones -->
+        <rect class="zone" x="16" y="60" width="150" height="120" rx="12"></rect>
+        <text class="zone-title" x="30" y="82">BROWSER</text>
+        <rect class="zone" x="214" y="30" width="300" height="410" rx="12"></rect>
+        <text class="zone-title" x="230" y="52">BACKEND · NESTJS</text>
+        <rect class="zone" x="566" y="60" width="178" height="380" rx="12"></rect>
+        <text class="zone-title" x="582" y="82">DATA &amp; TOOLS</text>
+
+        <!-- connectors -->
+        <path class="flow-em" d="M166,120 L250,120" marker-end="url(#a2)" marker-start="url(#a2)"></path>
+        <text class="edge-label" x="176" y="110">HTTP</text>
+        <path class="flow-em" d="M364,150 L364,182" marker-end="url(#a2)"></path>
+        <path class="flow-em" d="M364,238 L320,272" marker-end="url(#a2)"></path>
+        <path class="flow-em" d="M364,238 L410,272" marker-end="url(#a2)"></path>
+        <!-- service to postgres -->
+        <path class="flow-em" d="M420,210 C520,210 560,190 620,166" marker-end="url(#a2)" marker-start="url(#a2)"></path>
+        <!-- ytdlp to yt-dlp binary & ffmpeg -->
+        <path class="flow-em" d="M300,326 C300,392 470,404 566,300" marker-end="url(#a2)"></path>
+        <path class="flow-em" d="M300,326 C300,420 500,430 566,360" marker-end="url(#a2)"></path>
+        <!-- transcription to openai -->
+        <path class="flow-em" d="M430,326 C520,326 540,300 566,244" marker-end="url(#a2)"></path>
+        <!-- yt-dlp binary to platforms -->
+        <path class="flow-em" d="M655,300 L655,244" marker-end="url(#a2)"></path>
+
+        <!-- Browser node -->
+        <g>
+          <rect class="n-accent" x="34" y="96" width="118" height="48" rx="10"></rect>
+          <text class="n-label" x="93" y="118" text-anchor="middle" font-size="13">Next.js page</text>
+          <text class="n-sub" x="93" y="133" text-anchor="middle">paste · poll · read</text>
+        </g>
+
+        <!-- Controller -->
+        <g>
+          <rect class="n-fill n-stroke" x="244" y="96" width="240" height="54" rx="10" stroke-width="1.5"></rect>
+          <text class="n-label" x="364" y="118" text-anchor="middle">Controller</text>
+          <text class="n-sub" x="364" y="135" text-anchor="middle">POST · GET · GET/:id · DELETE</text>
+        </g>
+        <!-- Service -->
+        <g>
+          <rect class="n-accent" x="244" y="182" width="240" height="56" rx="10"></rect>
+          <text class="n-label" x="364" y="205" text-anchor="middle">Transcripts service</text>
+          <text class="n-sub" x="364" y="222" text-anchor="middle">validate · dedupe · run pipeline</text>
+        </g>
+        <!-- Ytdlp -->
+        <g>
+          <rect class="n-fill n-stroke" x="234" y="272" width="140" height="54" rx="10" stroke-width="1.5"></rect>
+          <text class="n-label" x="304" y="295" text-anchor="middle" font-size="13.5">Ytdlp service</text>
+          <text class="n-sub" x="304" y="312" text-anchor="middle">metadata · media</text>
+        </g>
+        <!-- Transcription -->
+        <g>
+          <rect class="n-fill n-stroke" x="386" y="272" width="112" height="54" rx="10" stroke-width="1.5"></rect>
+          <text class="n-label" x="442" y="295" text-anchor="middle" font-size="12.5">Transcription</text>
+          <text class="n-sub" x="442" y="312" text-anchor="middle">swappable</text>
+        </g>
+
+        <!-- Postgres -->
+        <g>
+          <rect class="n-fill n-stroke" x="586" y="120" width="140" height="50" rx="10" stroke-width="1.5"></rect>
+          <text class="n-label" x="656" y="142" text-anchor="middle" font-size="13.5">PostgreSQL</text>
+          <text class="n-sub" x="656" y="158" text-anchor="middle">store + cache</text>
+        </g>
+        <!-- OpenAI -->
+        <g>
+          <rect class="n-fill n-stroke" x="586" y="198" width="140" height="46" rx="10" stroke-width="1.5"></rect>
+          <text class="n-label" x="656" y="226" text-anchor="middle" font-size="13.5">OpenAI</text>
+        </g>
+        <!-- Platforms -->
+        <g>
+          <rect class="n-fill n-stroke" x="586" y="300" width="140" height="46" rx="10" stroke-width="1.5"></rect>
+          <text class="n-label" x="656" y="322" text-anchor="middle" font-size="12.5">Video platforms</text>
+          <text class="n-sub" x="656" y="337" text-anchor="middle">YT · TikTok · IG</text>
+        </g>
+        <!-- ffmpeg -->
+        <g>
+          <rect class="n-fill n-stroke" x="586" y="360" width="140" height="46" rx="10" stroke-width="1.5"></rect>
+          <text class="n-label" x="656" y="388" text-anchor="middle" font-size="13.5">ffmpeg</text>
+        </g>
+      </svg>
+    </div>
+  </section>
+
+  <!-- ─────────────────────── WHAT'S WORKING ─────────────────────── -->
+  <section class="reveal">
+    <div class="sec-head">
+      <p class="eyebrow dim">Live today</p>
+      <h2>What&rsquo;s working</h2>
+      <p>
+        Every capability below is running and has been used against real videos —
+        the three platforms transcribe, and the pipeline recovers from its own edges.
+      </p>
+    </div>
+    <div class="grid" id="caps"></div>
+  </section>
+
+  <!-- ─────────────────────── THE RECORD ─────────────────────── -->
+  <section class="reveal">
+    <div class="sec-head">
+      <p class="eyebrow dim">The record</p>
+      <h2>One row per transcript</h2>
+      <p>
+        A single table holds everything — it is the transcript, the history feed,
+        and the cache all at once. The normalized link is the key that stops the
+        same video being processed twice.
+      </p>
+    </div>
+    <div class="record">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>What it holds</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="field">url</td><td class="type">text</td><td class="note">Normalized link — the cache key</td></tr>
+          <tr><td class="field">platform</td><td class="type">string</td><td class="note">youtube · tiktok · instagram</td></tr>
+          <tr><td class="field">title</td><td class="type">text</td><td class="note">Filled in once the video is reached</td></tr>
+          <tr><td class="field">status</td><td class="type">string</td><td class="note">processing → completed · failed</td></tr>
+          <tr><td class="field">source</td><td class="type">string</td><td class="note">captions or audio — how the text was made</td></tr>
+          <tr><td class="field">text</td><td class="type">text</td><td class="note">The transcript itself</td></tr>
+          <tr><td class="field">error</td><td class="type">text</td><td class="note">A plain-English reason when something fails</td></tr>
+          <tr><td class="field">durationSeconds</td><td class="type">integer</td><td class="note">Length of the video</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <span><b>Runs locally.</b> Nothing leaves the machine except the optional OpenAI call.</span>
+    <span><b>Frontend</b> :4601</span>
+    <span><b>Backend</b> :4600</span>
+    <span><b>Postgres</b> :5544</span>
+  </footer>
+</div>
+
+<script>
+  (function () {
+    var caps = [
+      ["YouTube captions", "The fast path — free text in about 40 seconds"],
+      ["TikTok transcription", "Audio pulled and transcribed end to end"],
+      ["Instagram transcription", "Works with a signed-in session for private reels"],
+      ["Smart dedupe", "The same link is never transcribed twice"],
+      ["History &amp; delete", "Every transcript is kept, browsable, removable"],
+      ["Step-by-step logging", "The backend narrates each stage as it runs"],
+      ["Interrupted-job recovery", "A restart never leaves a job spinning forever"],
+      ["Hard timeouts", "A stuck download fails cleanly instead of hanging"],
+    ];
+    var tick = '<span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>';
+    var host = document.getElementById("caps");
+    if (host) {
+      host.innerHTML = caps.map(function (c) {
+        return '<div class="cap">' + tick + '<div><h4>' + c[0] + '</h4><p>' + c[1] + '</p></div></div>';
+      }).join("");
+    }
+
+    var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var items = document.querySelectorAll(".reveal");
+    if (reduce || !("IntersectionObserver" in window)) {
+      items.forEach(function (el) { el.classList.add("in"); });
+      return;
+    }
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+      });
+    }, { threshold: 0.12 });
+    items.forEach(function (el) { io.observe(el); });
+  })();
+</script>
