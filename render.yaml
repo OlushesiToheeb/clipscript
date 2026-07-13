@@ -1,0 +1,70 @@
+# Render Blueprint — provisions the whole Clipscript stack in one place:
+#   1. clipscript-backend  — NestJS API (Docker: bundles the Linux yt-dlp binary)
+#   2. clipscript-frontend — Next.js UI (Node)
+#   3. clipscript-db       — free PostgreSQL (the public-content cache)
+#
+# First deploy: push this file, then in Render "New > Blueprint" and point it here.
+# Two values are intentionally left for you to set in the dashboard (see below):
+#   - OPENAI_API_KEY on the backend  → the single switch that unlocks the paid
+#     audio path (TikTok / Instagram / uncaptioned YouTube). Leave it unset and
+#     only free YouTube-with-captions works; the audio path fails politely.
+#   - FRONTEND_URL on the backend    → set to the frontend's URL once it's live,
+#     e.g. https://clipscript-frontend.onrender.com (drives CORS). Changing it
+#     only restarts the backend — no rebuild.
+#
+# Note on Render's free tier: web services spin down after ~15 min idle (first
+# request cold-starts, ~30-60s) and free Postgres expires after 90 days. Low
+# impact here — history lives in the browser and the DB is just a cache that
+# rebuilds itself.
+
+databases:
+  - name: clipscript-db
+    plan: free
+    databaseName: clipscript
+    user: clipscript
+
+services:
+  # ---- Backend API ----
+  - type: web
+    name: clipscript-backend
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: clipscript-db
+          property: connectionString
+      # Signs transcript tokens. Auto-generated once and kept stable across deploys.
+      - key: TOKEN_SECRET
+        generateValue: true
+      # The switch. Set in the dashboard to enable the paid transcription path.
+      - key: OPENAI_API_KEY
+        sync: false
+      # Allowed browser origin for CORS. Set to the frontend URL after first deploy.
+      - key: FRONTEND_URL
+        sync: false
+      - key: NODE_ENV
+        value: production
+
+  # ---- Frontend UI ----
+  - type: web
+    name: clipscript-frontend
+    runtime: node
+    plan: free
+    rootDir: frontend
+    # NEXT_PUBLIC_API_URL is baked into the client bundle at build time, so it must
+    # be present here (not just at runtime). BACKEND_HOST is wired automatically
+    # from the backend service below; we prepend https:// to form the full URL.
+    buildCommand: npm ci && NEXT_PUBLIC_API_URL="https://$BACKEND_HOST" npm run build
+    startCommand: npx next start -p $PORT
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: BACKEND_HOST
+        fromService:
+          type: web
+          name: clipscript-backend
+          property: host
