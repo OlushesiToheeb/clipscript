@@ -55,16 +55,14 @@ services:
     runtime: node
     plan: free
     rootDir: frontend
-    # NEXT_PUBLIC_API_URL is baked into the client bundle at build time, so it must
-    # be present here (not just at runtime). BACKEND_HOST is wired automatically
-    # from the backend service below; we prepend https:// to form the full URL.
-    buildCommand: npm ci && NEXT_PUBLIC_API_URL="https://$BACKEND_HOST" npm run build
+    # NEXT_PUBLIC_API_URL is inlined into the client bundle at build time. Render's
+    # fromService `host` returns only the internal host (no .onrender.com), which
+    # truncated the API URL, so we set the backend's PUBLIC url explicitly here.
+    # Update this value if the backend service is ever recreated with a new URL.
+    buildCommand: npm ci && npm run build
     startCommand: npx next start -p $PORT
     envVars:
       - key: NODE_VERSION
         value: "22"
-      - key: BACKEND_HOST
-        fromService:
-          type: web
-          name: clipscript-backend
-          property: host
+      - key: NEXT_PUBLIC_API_URL
+        value: https://clipscript-backend-ipra.onrender.com
