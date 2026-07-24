@@ -16,6 +16,12 @@ import { TranscriptsModule } from './transcripts/transcripts.module';
         autoLoadModels: true,
         synchronize: true,
         logging: false,
+        // Managed Postgres (Supabase, etc.) requires TLS; local docker Postgres
+        // does not. Enable it with DB_SSL=true. rejectUnauthorized:false accepts
+        // the provider's cert without pinning a CA — standard for these hosts.
+        ...(process.env.DB_SSL === 'true'
+          ? { dialectOptions: { ssl: { require: true, rejectUnauthorized: false } } }
+          : {}),
       }),
     }),
     // Global rate limit — generous, because the browser polls GET /transcripts/:token
